@@ -1,0 +1,32 @@
+{
+  "name": "maggie-the-mua-backend",
+  "version": "1.0.0",
+  "description": "Backend for makeup artist booking system",
+  "main": "server.js",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js",
+    "setup": "cp .env.example .env && echo 'Please edit .env with your actual values'",
+    "db:setup": "node scripts/setup-database.js",
+    "db:reset": "psql -U postgres -d makeup_artist -f scripts/reset-database.sql",
+    "db:init": "psql -U postgres -d makeup_artist -f scripts/init-database.sql",
+    "db:sample": "psql -U postgres -d makeup_artist -f scripts/insert-sample-data.sql",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Serepa Selaelo Rebecca",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "body-parser": "^1.20.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.21.2",
+    "helmet": "^7.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.1",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}

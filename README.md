@@ -1,4 +1,4 @@
-# Maggie The MUA 💄
+# HER BY MAGGIE 💄
 
 A comprehensive web application for Maggie's professional makeup artistry services and premium hair weave store. Clients can book makeup appointments and purchase quality hair extensions seamlessly.
 
