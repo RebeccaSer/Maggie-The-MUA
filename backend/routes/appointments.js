@@ -1,131 +1,174 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
+const { haversineDistance } = require('../utils/geo');
 
-// Book new appointment
+// Book new appointment (supports multiple services, add-ons, and housecall fee)
 router.post('/book', async (req, res) => {
-  try {
-    const {
-      serviceId,
-      addons = [],
-      quantity = 1,
-      packageId,
-      appointmentDate,
-      location,
-      customerInfo
-    } = req.body;
+    const client = await db.pool.connect();
+    try {
+        await client.query('BEGIN');
 
-    // Calculate total price and duration
-    let totalPrice = 0;
-    let totalDuration = 0;
-    let transportFee = 0;
+        const {
+            services = [],        // array of { id, quantity }
+            package: pkg,         // optional { id, quantity }
+            addons = [],          // array of { id, quantity }
+            appointmentDate,
+            location,             // address string
+            coordinates,          // optional { lat, lng } if frontend provides
+            customerInfo
+        } = req.body;
 
-    // Get service details
-    if (serviceId) {
-      const serviceResult = await db.query(
-        'SELECT base_price, duration_minutes FROM services WHERE id = $1 AND is_active = true',
-        [serviceId]
-      );
+        let totalPrice = 0;
+        let totalDuration = 0;
+        let housecallFee = 0;
+        let distance = 0;
 
-      if (serviceResult.rows.length === 0) {
-        return res.status(404).json({
-          success: false,
-          error: 'Service not found'
+        // 1. Fetch studio coordinates from settings
+        const studioRes = await client.query(
+            "SELECT value FROM settings WHERE key IN ('studio_latitude', 'studio_longitude')"
+        );
+        const studioLat = parseFloat(studioRes.rows.find(r => r.key === 'studio_latitude').value);
+        const studioLng = parseFloat(studioRes.rows.find(r => r.key === 'studio_longitude').value);
+
+        // Determine customer coordinates (if not provided, we need to geocode)
+        let customerLat = null, customerLng = null;
+        if (coordinates && coordinates.lat && coordinates.lng) {
+            customerLat = parseFloat(coordinates.lat);
+            customerLng = parseFloat(coordinates.lng);
+        } else if (location) {
+            // Option 1: Geocode the address using an external API (e.g., Google Maps)
+            // For simplicity, we'll assume coordinates are provided by frontend or we skip fee.
+            // You could integrate a geocoding service here.
+            // For now, we'll skip distance calculation if no coordinates.
+            console.log('No coordinates provided, cannot calculate distance. Housecall fee will be 0.');
+        }
+
+        if (customerLat !== null && customerLng !== null) {
+            distance = haversineDistance(studioLat, studioLng, customerLat, customerLng);
+            
+            // Fetch housecall base fee and rate
+            const feeRes = await client.query(
+                "SELECT value FROM settings WHERE key IN ('housecall_base_fee', 'housecall_rate_per_km')"
+            );
+            const baseFee = parseFloat(feeRes.rows.find(r => r.key === 'housecall_base_fee').value);
+            const ratePerKm = parseFloat(feeRes.rows.find(r => r.key === 'housecall_rate_per_km').value);
+            
+            housecallFee = baseFee + (distance * ratePerKm);
+            totalPrice += housecallFee;
+        }
+
+        // 2. Create appointment (without service/package links)
+        const appointmentRes = await client.query(
+            `INSERT INTO appointments 
+             (appointment_date, location_address, housecall_fee, distance_km, status, customer_info)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING id`,
+            [appointmentDate, location, housecallFee, distance, 'pending', JSON.stringify(customerInfo)]
+        );
+        const appointmentId = appointmentRes.rows[0].id;
+
+        // 3. Process each selected service
+        for (const s of services) {
+            const serviceRes = await client.query(
+                'SELECT base_price, duration_minutes FROM services WHERE id = $1 AND is_active = true',
+                [s.id]
+            );
+            if (serviceRes.rows.length === 0) {
+                throw new Error(`Service ${s.id} not found`);
+            }
+            const { base_price, duration_minutes } = serviceRes.rows[0];
+            const quantity = s.quantity || 1;
+
+            totalPrice += base_price * quantity;
+            totalDuration += duration_minutes * quantity;
+
+            await client.query(
+                `INSERT INTO appointment_services 
+                 (appointment_id, service_id, quantity, price_at_time, duration_minutes)
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [appointmentId, s.id, quantity, base_price, duration_minutes]
+            );
+        }
+
+        // 4. Process package (if any)
+        if (pkg) {
+            const pkgRes = await client.query(
+                'SELECT base_price, base_duration_minutes FROM packages WHERE id = $1 AND is_active = true',
+                [pkg.id]
+            );
+            if (pkgRes.rows.length === 0) {
+                throw new Error(`Package ${pkg.id} not found`);
+            }
+            const { base_price, base_duration_minutes } = pkgRes.rows[0];
+            const quantity = pkg.quantity || 1;
+
+            totalPrice += base_price * quantity;
+            totalDuration += base_duration_minutes * quantity;
+
+            await client.query(
+                `INSERT INTO appointment_packages
+                 (appointment_id, package_id, quantity, price_at_time, duration_minutes)
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [appointmentId, pkg.id, quantity, base_price, base_duration_minutes]
+            );
+        }
+
+        // 5. Process add-ons
+        for (const a of addons) {
+            const addonRes = await client.query(
+                'SELECT price, duration_minutes FROM addons WHERE id = $1 AND is_active = true',
+                [a.id]
+            );
+            if (addonRes.rows.length === 0) {
+                throw new Error(`Addon ${a.id} not found`);
+            }
+            const { price, duration_minutes } = addonRes.rows[0];
+            const quantity = a.quantity || 1;
+
+            totalPrice += price * quantity;
+            totalDuration += duration_minutes * quantity;
+
+            await client.query(
+                `INSERT INTO appointment_addons (appointment_id, addon_id, quantity)
+                 VALUES ($1, $2, $3)`,
+                [appointmentId, a.id, quantity]
+            );
+        }
+
+        // 6. Update appointment with totals
+        await client.query(
+            `UPDATE appointments 
+             SET total_price = $1, total_duration_minutes = $2 
+             WHERE id = $3`,
+            [totalPrice, totalDuration, appointmentId]
+        );
+
+        await client.query('COMMIT');
+
+        res.status(201).json({
+            success: true,
+            message: 'Appointment booked successfully',
+            data: {
+                appointmentId,
+                totalPrice,
+                totalDuration,
+                depositAmount: totalPrice * 0.5,
+                housecallFee,
+                distanceKm: distance
+            }
         });
-      }
 
-      const service = serviceResult.rows[0];
-      totalPrice += service.base_price * quantity;
-      totalDuration += service.duration_minutes * quantity;
-    }
-
-    // Get package details
-    if (packageId) {
-      const packageResult = await db.query(
-        'SELECT base_price, base_duration_minutes, transport_fee FROM packages WHERE id = $1 AND is_active = true',
-        [packageId]
-      );
-
-      if (packageResult.rows.length === 0) {
-        return res.status(404).json({
-          success: false,
-          error: 'Package not found'
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Booking error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message || 'Failed to book appointment'
         });
-      }
-
-      const package = packageResult.rows[0];
-      totalPrice += package.base_price;
-      totalDuration += package.base_duration_minutes;
-      transportFee = package.transport_fee || 0;
+    } finally {
+        client.release();
     }
-
-    // Add add-ons
-    for (const addon of addons) {
-      const addonResult = await db.query(
-        'SELECT price, duration_minutes FROM addons WHERE id = $1 AND is_active = true',
-        [addon.id]
-      );
-
-      if (addonResult.rows.length > 0) {
-        const addonData = addonResult.rows[0];
-        totalPrice += addonData.price * (addon.quantity || 1);
-        totalDuration += addonData.duration_minutes * (addon.quantity || 1);
-      }
-    }
-
-    // Add transport fee if location is specified
-    if (location && location !== 'studio') {
-      totalPrice += transportFee;
-    }
-
-    // Create appointment (without customer ID for now - would come from auth)
-    const appointmentResult = await db.query(
-      `INSERT INTO appointments (
-        service_id, package_id, appointment_date, total_duration_minutes,
-        total_price, quantity, location_address, transport_fee, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING *`,
-      [
-        serviceId,
-        packageId,
-        appointmentDate,
-        totalDuration,
-        totalPrice,
-        quantity,
-        location,
-        transportFee,
-        'pending'
-      ]
-    );
-
-    const appointment = appointmentResult.rows[0];
-
-    // Add add-ons to appointment
-    for (const addon of addons) {
-      await db.query(
-        'INSERT INTO appointment_addons (appointment_id, addon_id, quantity) VALUES ($1, $2, $3)',
-        [appointment.id, addon.id, addon.quantity || 1]
-      );
-    }
-
-    res.status(201).json({
-      success: true,
-      message: 'Appointment booked successfully',
-      data: {
-        appointment,
-        totalPrice,
-        totalDuration,
-        depositAmount: totalPrice * 0.5 // 50% deposit
-      }
-    });
-
-  } catch (error) {
-    console.error('Booking error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to book appointment'
-    });
-  }
 });
 
 // Get all appointments (for admin)

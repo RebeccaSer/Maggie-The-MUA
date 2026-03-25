@@ -2,24 +2,34 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
 
-// Get all active services
+// Get all active services with their dedicated add-ons
 router.get('/', async (req, res) => {
-  try {
-    const result = await db.query(
-      'SELECT * FROM services WHERE is_active = true ORDER BY name'
-    );
-    res.json({
-      success: true,
-      data: result.rows,
-      count: result.rowCount
-    });
-  } catch (error) {
-    console.error('Error fetching services:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch services'
-    });
-  }
+    try {
+        const result = await db.query(`
+            SELECT s.*,
+                COALESCE(
+                    json_agg(
+                        json_build_object(
+                            'id', a.id,
+                            'name', a.name,
+                            'description', a.description,
+                            'price', a.price,
+                            'duration_minutes', a.duration_minutes
+                        )
+                    ) FILTER (WHERE a.id IS NOT NULL),
+                    '[]'
+                ) as addons
+            FROM services s
+            LEFT JOIN addons a ON a.service_id = s.id AND a.is_active = true
+            WHERE s.is_active = true
+            GROUP BY s.id
+            ORDER BY s.name
+        `);
+        res.json({ success: true, data: result.rows, count: result.rowCount });
+    } catch (error) {
+        console.error('Error fetching services:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch services' });
+    }
 });
 
 // Get all active add-ons

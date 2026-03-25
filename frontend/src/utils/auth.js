@@ -1,31 +1,18 @@
-// Authentication utility functions
+import { backendAuthAPI } from './api';
+
 export const authAPI = {
   login: async (email, password) => {
-    // Mock authentication - in production, this would call your backend
-    if (email === 'admin@maggiethemua.com' && password === 'admin123') {
-      const user = {
-        id: 1,
-        email: 'admin@maggiethemua.com',
-        name: 'Maggie Admin',
-        role: 'admin',
-        permissions: ['manage_services', 'manage_appointments', 'manage_promotions', 'view_reports']
-      };
-      
-      // Store in localStorage (in production, use secure HTTP-only cookies)
-      localStorage.setItem('authToken', 'mock-admin-token');
+    try {
+      const response = await backendAuthAPI.login({ email, password });
+      const { user, token } = response.data.data;
+      localStorage.setItem('authToken', token);
       localStorage.setItem('user', JSON.stringify(user));
       localStorage.setItem('loginTime', new Date().toISOString());
-      
-      return { 
-        success: true, 
-        data: { 
-          user, 
-          token: 'mock-admin-token' 
-        } 
-      };
+      return { success: true, data: { user, token } };
+    } catch (error) {
+      const message = error.response?.data?.error || 'Invalid email or password';
+      throw new Error(message);
     }
-    
-    throw new Error('Invalid email or password');
   },
 
   logout: () => {
@@ -48,23 +35,17 @@ export const authAPI = {
   isAuthenticated: () => {
     const token = localStorage.getItem('authToken');
     const user = authAPI.getCurrentUser();
-    
     if (!token || !user) return false;
-    
-    // Check if token is expired (mock - in production, verify with backend)
     const loginTime = localStorage.getItem('loginTime');
     if (loginTime) {
       const loginDate = new Date(loginTime);
       const now = new Date();
       const hoursDiff = (now - loginDate) / (1000 * 60 * 60);
-      
-      // Mock token expiration (24 hours)
       if (hoursDiff > 24) {
         authAPI.logout();
         return false;
       }
     }
-    
     return true;
   },
 
@@ -73,15 +54,15 @@ export const authAPI = {
     return user?.permissions?.includes(permission) || false;
   },
 
-  // Mock function to update user profile
   updateProfile: async (profileData) => {
-    const user = authAPI.getCurrentUser();
-    if (!user) throw new Error('Not authenticated');
-    
-    const updatedUser = { ...user, ...profileData };
-    localStorage.setItem('user', JSON.stringify(updatedUser));
-    
-    return { success: true, data: { user: updatedUser } };
+    try {
+      const response = await backendAuthAPI.updateProfile(profileData);
+      const updatedUser = response.data.data;
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      return { success: true, data: { user: updatedUser } };
+    } catch (error) {
+      throw new Error(error.response?.data?.error || 'Failed to update profile');
+    }
   }
 };
 

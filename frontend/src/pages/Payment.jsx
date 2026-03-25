@@ -8,7 +8,7 @@ const Payment = () => {
   const [processing, setProcessing] = useState(false);
   const [selectedMethod, setSelectedMethod] = useState('stripe');
   const [showBankDetails, setShowBankDetails] = useState(false);
-  const { bookingData, totalPrice, depositAmount } = location.state || {};
+  const { bookingData } = location.state || {};
 
   const handlePayment = async () => {
     if (!bookingData) {
@@ -21,14 +21,10 @@ const Payment = () => {
     try {
       const paymentData = {
         ...bookingData,
-        totalPrice,
-        depositAmount,
-        serviceName: bookingData.serviceId ? 'Service' : (bookingData.packageId ? 'Package' : 'Appointment'),
         appointmentId: `MAGGIE-${Date.now()}`
       };
 
       if (selectedMethod === 'bank_transfer') {
-        // For bank transfer, show details but don't process payment
         initiateBankTransfer(paymentData);
         setShowBankDetails(true);
         return;
@@ -36,21 +32,18 @@ const Payment = () => {
 
       await initiatePayment(paymentData, selectedMethod);
       
-      // For mock payments, redirect to success page
       if (selectedMethod === 'mock') {
         setTimeout(() => {
           alert('Payment processed successfully! Your appointment is confirmed.');
           navigate('/payment-success', { 
             state: { 
               bookingData, 
-              paymentAmount: depositAmount,
+              paymentAmount: bookingData.depositAmount,
               paymentMethod: 'Mock Payment'
             } 
           });
         }, 2000);
       }
-      // For Stripe, the redirect happens in the utility function
-
     } catch (error) {
       console.error('Payment failed:', error);
       alert(`Payment failed: ${error.message}. Please try again.`);
@@ -67,7 +60,7 @@ const Payment = () => {
     branchCode: "051001",
     branchName: "Hatfield Branch",
     accountType: "Business Current Account",
-    swiftCode: "SBZAZAJJ", // For international transfers
+    swiftCode: "SBZAZAJJ",
   };
 
   if (!bookingData) {
@@ -89,6 +82,8 @@ const Payment = () => {
     );
   }
 
+  const { totalPrice, depositAmount, services, package: pkg, addons, transportFee, customerInfo, appointmentDate, location: serviceLocation } = bookingData;
+
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div className="text-center mb-8">
@@ -104,7 +99,6 @@ const Payment = () => {
           <h2 className="text-2xl font-semibold text-gray-900 mb-4">Choose Payment Method</h2>
           
           <div className="space-y-4 mb-6">
-            {/* Stripe Card Payment */}
             <div 
               className={`border-2 rounded-lg p-4 cursor-pointer transition-all ${
                 selectedMethod === 'stripe' ? 'border-pink-600 bg-pink-50' : 'border-gray-300 hover:border-pink-300'
@@ -127,14 +121,8 @@ const Payment = () => {
               <p className="text-sm text-gray-600 ml-6">
                 Secure payment via Stripe - Visa, Mastercard, American Express
               </p>
-              <div className="flex space-x-2 ml-6 mt-2">
-                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Visa</span>
-                <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">Mastercard</span>
-                <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">Amex</span>
-              </div>
             </div>
 
-            {/* Bank Transfer */}
             <div 
               className={`border-2 rounded-lg p-4 cursor-pointer transition-all ${
                 selectedMethod === 'bank_transfer' ? 'border-pink-600 bg-pink-50' : 'border-gray-300 hover:border-pink-300'
@@ -159,7 +147,6 @@ const Payment = () => {
               </p>
             </div>
 
-            {/* Mock payment for development */}
             {process.env.NODE_ENV === 'development' && (
               <div 
                 className={`border-2 rounded-lg p-4 cursor-pointer transition-all ${
@@ -185,7 +172,6 @@ const Payment = () => {
             )}
           </div>
 
-          {/* Bank Transfer Details */}
           {showBankDetails && (
             <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
               <h3 className="font-semibold text-green-800 mb-3">Bank Transfer Instructions</h3>
@@ -208,7 +194,7 @@ const Payment = () => {
                 </div>
                 <div className="flex justify-between">
                   <span>Reference:</span>
-                  <span className="font-medium">MAGGIE-{bookingData.appointmentId}</span>
+                  <span className="font-medium">MAGGIE-{Date.now()}</span>
                 </div>
                 <div className="flex justify-between font-semibold mt-2 pt-2 border-t border-green-200">
                   <span>Amount:</span>
@@ -259,7 +245,6 @@ const Payment = () => {
             </p>
           </div>
 
-          {/* Security Badges */}
           <div className="mt-6 flex justify-center space-x-4">
             <div className="text-center">
               <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-1">
@@ -288,14 +273,14 @@ const Payment = () => {
             <div className="flex justify-between">
               <span className="text-gray-600">Service Type:</span>
               <span className="font-medium">
-                {bookingData.serviceId ? 'Individual Service' : (bookingData.packageId ? 'Package' : 'Custom')}
+                {services?.length > 0 ? 'Multiple Services' : (pkg ? 'Package' : 'Custom')}
               </span>
             </div>
             
             <div className="flex justify-between">
               <span className="text-gray-600">Date & Time:</span>
               <span className="font-medium">
-                {new Date(bookingData.appointmentDate).toLocaleDateString('en-ZA', { 
+                {new Date(appointmentDate).toLocaleDateString('en-ZA', { 
                   weekday: 'long', 
                   year: 'numeric', 
                   month: 'long', 
@@ -309,23 +294,40 @@ const Payment = () => {
             <div className="flex justify-between">
               <span className="text-gray-600">Location:</span>
               <span className="font-medium capitalize">
-                {bookingData.location === 'studio' ? 'Studio' : `Mobile - ${bookingData.customerLocation?.suburb}`}
+                {serviceLocation === 'studio' ? 'Studio' : `Mobile - ${bookingData.customerLocation?.suburb}`}
               </span>
             </div>
 
-            {bookingData.location === 'mobile' && bookingData.customerLocation?.distance && (
-              <div className="flex justify-between">
-                <span className="text-gray-600">Distance:</span>
-                <span className="font-medium">{bookingData.customerLocation.distance} km</span>
+            {transportFee > 0 && (
+              <div className="flex justify-between text-pink-600">
+                <span>Transport Fee:</span>
+                <span className="font-medium">R{transportFee?.toFixed(2)}</span>
               </div>
             )}
 
-            {bookingData.transportFee > 0 && (
-              <div className="flex justify-between text-pink-600">
-                <span>Transport Fee:</span>
-                <span className="font-medium">R{bookingData.transportFee?.toFixed(2)}</span>
+            {/* Services */}
+            {services && services.map(service => (
+              <div key={service.id} className="flex justify-between">
+                <span>{service.name} {service.quantity > 1 && `×${service.quantity}`}</span>
+                <span>R{(service.base_price * service.quantity).toFixed(2)}</span>
+              </div>
+            ))}
+
+            {/* Package */}
+            {pkg && (
+              <div className="flex justify-between">
+                <span>{pkg.name}</span>
+                <span>R{pkg.base_price.toFixed(2)}</span>
               </div>
             )}
+
+            {/* Add-ons */}
+            {addons && addons.map(addon => (
+              <div key={addon.id} className="flex justify-between text-sm">
+                <span>{addon.name} {addon.quantity > 1 && `×${addon.quantity}`}</span>
+                <span>R{(addon.price * addon.quantity).toFixed(2)}</span>
+              </div>
+            ))}
 
             <div className="border-t pt-4 mt-4">
               <div className="flex justify-between text-lg font-semibold mb-2">
@@ -358,11 +360,11 @@ const Payment = () => {
           {/* Customer Information */}
           <div className="mt-4 bg-gray-50 rounded-lg p-4">
             <h3 className="font-semibold text-gray-800 mb-2">Customer Details</h3>
-            <p className="text-sm text-gray-700"><strong>Name:</strong> {bookingData.customerInfo?.name}</p>
-            <p className="text-sm text-gray-700"><strong>Email:</strong> {bookingData.customerInfo?.email}</p>
-            <p className="text-sm text-gray-700"><strong>Phone:</strong> {bookingData.customerInfo?.phone}</p>
-            {bookingData.customerInfo?.notes && (
-              <p className="text-sm text-gray-700 mt-2"><strong>Notes:</strong> {bookingData.customerInfo.notes}</p>
+            <p className="text-sm text-gray-700"><strong>Name:</strong> {customerInfo?.name}</p>
+            <p className="text-sm text-gray-700"><strong>Email:</strong> {customerInfo?.email}</p>
+            <p className="text-sm text-gray-700"><strong>Phone:</strong> {customerInfo?.phone}</p>
+            {customerInfo?.notes && (
+              <p className="text-sm text-gray-700 mt-2"><strong>Notes:</strong> {customerInfo.notes}</p>
             )}
           </div>
         </div>

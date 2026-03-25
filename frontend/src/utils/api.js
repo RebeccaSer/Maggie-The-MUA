@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { authAPI as localAuthAPI } from './auth'; // Import with different name to avoid conflict
+import { authAPI as localAuthAPI } from './auth';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -20,9 +20,7 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 // Response interceptor to handle auth errors
@@ -44,6 +42,10 @@ export const servicesAPI = {
   createService: (data) => api.post('/admin/services', data),
   updateService: (id, data) => api.put(`/admin/services/${id}`, data),
   deleteService: (id) => api.delete(`/admin/services/${id}`),
+  // Add-on CRUD
+  createAddon: (data) => api.post('/admin/addons', data),
+  updateAddon: (id, data) => api.put(`/admin/addons/${id}`, data),
+  deleteAddon: (id) => api.delete(`/admin/addons/${id}`),
 };
 
 export const appointmentsAPI = {
@@ -55,8 +57,6 @@ export const appointmentsAPI = {
   updateStatus: (id, status) => api.put(`/admin/appointments/${id}`, { status }),
 };
 
-// Remove the duplicate authAPI export since it's already defined in auth.js
-// Only export backend API calls for authentication
 export const backendAuthAPI = {
   login: (credentials) => api.post('/auth/login', credentials),
   register: (userData) => api.post('/auth/register', userData),

@@ -6,21 +6,20 @@ const Booking = () => {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [services, setServices] = useState([]);
-  const [addons, setAddons] = useState([]);
+  const [allAddons, setAllAddons] = useState([]);
   const [packages, setPackages] = useState([]);
   const [loading, setLoading] = useState(true);
-  
-  // Studio location 
+  const [cartItems, setCartItems] = useState([]);       // { service, quantity }
+  const [selectedAddons, setSelectedAddons] = useState([]); // { addon, quantity }
+  const [selectedPackage, setSelectedPackage] = useState(null);
+
+  // Studio location (Polokwane)
   const studioLocation = {
     address: "27 Swallow Street Rainbow Park, Polokwane, 0699",
-    coordinates: { lat: -23.9318, lng: 29.4795 } 
+    coordinates: { lat: -23.9318, lng: 29.4795 }
   };
 
   // Form state
-  const [selectedService, setSelectedService] = useState(null);
-  const [selectedPackage, setSelectedPackage] = useState(null);
-  const [selectedAddons, setSelectedAddons] = useState([]);
-  const [quantity, setQuantity] = useState(1);
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
   const [location, setLocation] = useState('studio');
@@ -40,7 +39,7 @@ const Booking = () => {
   });
   const [calculatingDistance, setCalculatingDistance] = useState(false);
 
-  // Load services and addons from API
+  // Load services, addons, packages from API
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -50,44 +49,37 @@ const Booking = () => {
           servicesAPI.getAddons(),
           servicesAPI.getPackages()
         ]);
-        
         setServices(servicesRes.data.data || []);
-        setAddons(addonsRes.data.data || []);
+        setAllAddons(addonsRes.data.data || []);
         setPackages(packagesRes.data.data || []);
       } catch (error) {
-        console.error('Error loading services:', error);
+        console.error('Error loading data:', error);
         // Fallback to sample data if API fails
         setServices(getSampleServices());
-        setAddons(getSampleAddons());
+        setAllAddons(getSampleAddons());
         setPackages(getSamplePackages());
       } finally {
         setLoading(false);
       }
     };
-
     loadData();
   }, []);
 
-  // Calculate distance between two coordinates using Haversine formula
+  // Helper: Calculate distance (Haversine formula)
   const calculateDistance = (lat1, lon1, lat2, lon2) => {
-    const R = 6371; // Earth's radius in kilometers
+    const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    const distance = R * c;
-    return Math.round(distance * 10) / 10; // Round to 1 decimal place
+    return Math.round(R * c * 10) / 10;
   };
 
-  // Mock function to get coordinates from address (in real app, use Google Maps API)
+  // Mock geocoder (replace with real API later)
   const getCoordinatesFromAddress = async (address) => {
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Mock coordinates for different areas (in real app, use Google Geocoding API)
+    await new Promise(resolve => setTimeout(resolve, 500));
     const mockCoordinates = {
       'pretoria cbd': { lat: -25.7479, lng: 28.2293 },
       'hatfield': { lat: -25.7485, lng: 28.2320 },
@@ -98,15 +90,10 @@ const Booking = () => {
       'midrand': { lat: -25.9950, lng: 28.1300 },
       'johannesburg': { lat: -26.2041, lng: 28.0473 }
     };
-
-    const addressLower = address.toLowerCase();
+    const addrLower = address.toLowerCase();
     for (const [area, coords] of Object.entries(mockCoordinates)) {
-      if (addressLower.includes(area)) {
-        return coords;
-      }
+      if (addrLower.includes(area)) return coords;
     }
-
-    // Default: random coordinates within 50km radius
     const randomOffset = () => (Math.random() - 0.5) * 0.5;
     return {
       lat: studioLocation.coordinates.lat + randomOffset(),
@@ -114,172 +101,173 @@ const Booking = () => {
     };
   };
 
-  // Calculate transport fee based on distance
-  const calculateTransportFee = () => {
-    if (location === 'studio') return 0;
-    
-    const baseFee = 1000;
-    const ratePerKm = 11.5;
-    const distance = customerLocation.distance || 0;
-    
-    // Minimum fee for very short distances
-    if (distance < 5) return baseFee;
-    
-    return baseFee + (distance * ratePerKm);
-  };
-
   // Handle address change and calculate distance
   const handleAddressChange = async (field, value) => {
-    const newLocation = {
-      ...customerLocation,
-      [field]: value
-    };
+    const newLocation = { ...customerLocation, [field]: value };
     setCustomerLocation(newLocation);
 
-    // Calculate distance when we have enough address info
     if (field === 'suburb' && value.length > 2) {
       setCalculatingDistance(true);
       try {
         const fullAddress = `${newLocation.suburb}, ${newLocation.city}, ${newLocation.postalCode}`;
-        const customerCoords = await getCoordinatesFromAddress(fullAddress);
-        
-        const distance = calculateDistance(
-          studioLocation.coordinates.lat,
-          studioLocation.coordinates.lng,
-          customerCoords.lat,
-          customerCoords.lng
+        const coords = await getCoordinatesFromAddress(fullAddress);
+        const dist = calculateDistance(
+          studioLocation.coordinates.lat, studioLocation.coordinates.lng,
+          coords.lat, coords.lng
         );
-
         setCustomerLocation(prev => ({
           ...prev,
-          coordinates: customerCoords,
-          distance: distance
+          coordinates: coords,
+          distance: dist
         }));
       } catch (error) {
-        console.error('Error calculating distance:', error);
-        // Set a default distance if calculation fails
-        setCustomerLocation(prev => ({
-          ...prev,
-          distance: 10 // Default 10km
-        }));
+        console.error('Geocoding error:', error);
+        setCustomerLocation(prev => ({ ...prev, distance: 10 }));
       } finally {
         setCalculatingDistance(false);
       }
     }
   };
 
+  // Add service to cart
+  const addToCart = (service) => {
+    setCartItems(prev => {
+      const existing = prev.find(item => item.service.id === service.id);
+      if (existing) {
+        return prev.map(item =>
+          item.service.id === service.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        );
+      } else {
+        return [...prev, { service, quantity: 1 }];
+      }
+    });
+  };
+
+  // Remove from cart
+  const removeFromCart = (serviceId) => {
+    setCartItems(prev => prev.filter(item => item.service.id !== serviceId));
+  };
+
+  // Update quantity
+  const updateQuantity = (serviceId, delta) => {
+    setCartItems(prev => prev.map(item => {
+      if (item.service.id === serviceId) {
+        const newQty = item.quantity + delta;
+        if (newQty < 1) return null;
+        return { ...item, quantity: newQty };
+      }
+      return item;
+    }).filter(Boolean));
+  };
+
+  // Add‑on handling
+  const handleAddonToggle = (addon) => {
+    const existing = selectedAddons.find(a => a.addon.id === addon.id);
+    if (existing) {
+      setSelectedAddons(prev => prev.filter(a => a.addon.id !== addon.id));
+    } else {
+      setSelectedAddons([...selectedAddons, { addon, quantity: 1 }]);
+    }
+  };
+
+  const handleAddonQuantityChange = (addonId, delta) => {
+    setSelectedAddons(prev => prev.map(a => {
+      if (a.addon.id === addonId) {
+        const newQty = a.quantity + delta;
+        if (newQty < 1) return null;
+        return { ...a, quantity: newQty };
+      }
+      return a;
+    }).filter(Boolean));
+  };
+
   // Calculate totals
   const calculateTotals = () => {
-    let totalPrice = 0;
-    let totalDuration = 0;
-
-    // Service cost and duration
-    if (selectedService) {
-      const servicePrice = parseFloat(selectedService.base_price) || 0;
-      const serviceDuration = parseInt(selectedService.duration_minutes) || 0;
-      totalPrice += servicePrice * quantity;
-      totalDuration += serviceDuration * quantity;
-    }
-
-    // Package cost and duration
-    if (selectedPackage) {
-      const packagePrice = parseFloat(selectedPackage.base_price) || 0;
-      const packageDuration = parseInt(selectedPackage.base_duration_minutes) || 0;
-      totalPrice += packagePrice;
-      totalDuration += packageDuration;
-    }
-
-    // Add-ons cost and duration
-    selectedAddons.forEach(addon => {
-      const addonPrice = parseFloat(addon.price) || 0;
-      const addonDuration = parseInt(addon.duration_minutes) || 0;
-      const addonQuantity = parseInt(addon.quantity) || 1;
-      totalPrice += addonPrice * addonQuantity;
-      totalDuration += addonDuration * addonQuantity;
+    let serviceTotal = 0;
+    let serviceDuration = 0;
+    cartItems.forEach(item => {
+      serviceTotal += item.service.base_price * item.quantity;
+      serviceDuration += item.service.duration_minutes * item.quantity;
     });
 
-    return { 
-      totalPrice: Math.round(totalPrice * 100) / 100,
-      totalDuration 
-    };
-  };
-
-  const { totalPrice, totalDuration } = calculateTotals();
-  const transportFee = calculateTransportFee();
-  const finalTotal = totalPrice + transportFee;
-
-  // Handle addon selection
-  const handleAddonToggle = (addon) => {
-    const existingIndex = selectedAddons.findIndex(a => a.id === addon.id);
-    if (existingIndex >= 0) {
-      setSelectedAddons(selectedAddons.filter(a => a.id !== addon.id));
-    } else {
-      setSelectedAddons([...selectedAddons, { ...addon, quantity: 1 }]);
+    let packageTotal = 0;
+    let packageDuration = 0;
+    if (selectedPackage) {
+      packageTotal = selectedPackage.base_price;
+      packageDuration = selectedPackage.base_duration_minutes;
     }
+
+    let addonTotal = 0;
+    let addonDuration = 0;
+    selectedAddons.forEach(a => {
+      addonTotal += a.addon.price * a.quantity;
+      addonDuration += a.addon.duration_minutes * a.quantity;
+    });
+
+    const subtotal = serviceTotal + packageTotal + addonTotal;
+    const totalDuration = serviceDuration + packageDuration + addonDuration;
+
+    // Transport fee: base R1000 + R11.50/km (if mobile and distance > 0)
+    let transportFee = 0;
+    if (location === 'mobile' && customerLocation.distance > 0) {
+      transportFee = 1000 + (customerLocation.distance * 11.5);
+    }
+
+    const finalTotal = subtotal + transportFee;
+    return { subtotal, transportFee, finalTotal, totalDuration };
   };
 
-  // Handle addon quantity change
-  const handleAddonQuantityChange = (addonId, newQuantity) => {
-    if (newQuantity < 1) return;
-    setSelectedAddons(selectedAddons.map(addon => 
-      addon.id === addonId ? { ...addon, quantity: newQuantity } : addon
-    ));
-  };
+  const { subtotal, transportFee, finalTotal, totalDuration } = calculateTotals();
 
-  // Handle form submission
+  // Which add‑ons to show in step 2: global (service_id IS NULL) + those linked to any service in cart
+  const displayedAddons = allAddons.filter(addon =>
+    addon.service_id === null ||
+    cartItems.some(item => item.service.id === addon.service_id)
+  );
+
+  // Submit
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!selectedService && !selectedPackage) {
-      alert('Please select at least one service or package');
+    if (cartItems.length === 0 && !selectedPackage) {
+      alert('Please select at least one service or a package');
       return;
     }
-
     if (!selectedDate || !selectedTime) {
       alert('Please select date and time');
       return;
     }
-
     if (location === 'mobile' && (!customerLocation.suburb || !customerLocation.city)) {
       alert('Please provide your suburb and city for mobile service');
       return;
     }
 
-    const appointmentData = {
-      serviceId: selectedService?.id,
-      packageId: selectedPackage?.id,
-      addons: selectedAddons,
-      quantity,
+    // Prepare booking data with full objects for Payment page
+    const bookingData = {
+      services: cartItems.map(item => ({ ...item.service, quantity: item.quantity })),
+      package: selectedPackage ? { ...selectedPackage, quantity: 1 } : null,
+      addons: selectedAddons.map(a => ({ ...a.addon, quantity: a.quantity })),
       appointmentDate: `${selectedDate}T${selectedTime}`,
-      location,
-      customerLocation,
+      location: location === 'studio' ? 'studio' : customerLocation.address || customerLocation.suburb,
+      coordinates: customerLocation.coordinates,
       customerInfo,
+      studioLocation,
       transportFee,
-      finalTotal,
-      studioLocation
+      totalPrice: finalTotal,
+      depositAmount: finalTotal * 0.5
     };
 
     try {
-      console.log('Booking data:', appointmentData);
-      
-      // Redirect to payment
-      navigate('/payment', { 
-        state: { 
-          bookingData: appointmentData,
-          totalPrice: finalTotal,
-          depositAmount: finalTotal * 0.5
-        }
-      });
+      navigate('/payment', { state: { bookingData } });
     } catch (error) {
       console.error('Booking failed:', error);
       alert('Booking failed. Please try again.');
     }
   };
 
-  // Generate time slots
-  const timeSlots = [
-    '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00'
-  ];
+  // Time slots
+  const timeSlots = ['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00'];
 
   if (loading) {
     return (
@@ -296,25 +284,18 @@ const Booking = () => {
     <div className="bg-black mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div className="text-center mb-8">
         <h1 className="text-4xl font-bold text-white mb-4">Book Your Appointment</h1>
-        <p className="text-xl text-white">
-          Schedule your makeup or hair service with 
-          <span className="bg-gradient-to-r from-yellow-200 to-yellow-700 bg-clip-text text-transparent"> HER BY MAGGIE </span>
-        </p>
+        <p className="text-xl text-white">Schedule your makeup or hair service with HER BY MAGGIE</p>
       </div>
 
       {/* Progress Steps */}
       <div className="mb-8">
         <div className="flex items-center justify-center">
-          {[1, 2, 3, 4].map((stepNumber) => (
+          {[1,2,3,4].map(stepNumber => (
             <div key={stepNumber} className="flex items-center">
               <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
                 step >= stepNumber ? 'bg-yellow-500 text-white' : 'bg-white text-black'
-              }`}>
-                {stepNumber}
-              </div>
-              {stepNumber < 4 && (
-                <div className={`w-16 h-1 ${step > stepNumber ? 'bg-yellow-500' : 'bg-gray-300'}`}></div>
-              )}
+              }`}>{stepNumber}</div>
+              {stepNumber < 4 && <div className={`w-16 h-1 ${step > stepNumber ? 'bg-yellow-500' : 'bg-gray-300'}`}></div>}
             </div>
           ))}
         </div>
@@ -327,478 +308,269 @@ const Booking = () => {
       </div>
 
       <form onSubmit={handleSubmit} className="bg-black rounded-lg shadow-md p-6">
-        {/* Step 1: Service Selection */}
+        {/* Step 1: Service Selection (Cart) */}
         {step === 1 && (
           <div className="space-y-6">
             <h2 className="text-2xl font-semibold text-white mb-4">Select Services</h2>
-            
-            {/* Packages */}
-            <div>
-              <h3 className="text-lg font-semibold text-white mb-3">Packages</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {packages.map(pkg => (
-                  <div
-                    key={pkg.id}
-                    className={`bg-yellow-100 border-2 rounded-lg p-4 cursor-pointer transition-all ${
-                      selectedPackage?.id === pkg.id 
-                        ? 'border-yellow-600 bg-yellow-50' 
-                        : 'border-yellow-200 hover:border-yellow-300'
-                    }`}
-                    onClick={() => {
-                      setSelectedPackage(pkg);
-                      setSelectedService(null);
-                    }}
-                  >
-                    <h4 className="font-semibold text-black">{pkg.name}</h4>
-                    <p className="text-black text-sm mt-1">{pkg.description}</p>
-                    <div className="flex justify-between items-center mt-2">
-                      <span className="text-lg font-bold text-yellow-900">R{pkg.base_price}</span>
-                      <span className="text-gray-500">{Math.floor(pkg.base_duration_minutes / 60)}h {pkg.base_duration_minutes % 60}m</span>
+
+            {/* Packages (optional) */}
+            {packages.length > 0 && (
+              <div>
+                <h3 className="text-lg font-semibold text-white mb-3">Packages</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {packages.map(pkg => (
+                    <div
+                      key={pkg.id}
+                      className={`bg-yellow-100 border-2 rounded-lg p-4 cursor-pointer transition-all ${
+                        selectedPackage?.id === pkg.id ? 'border-yellow-600 bg-yellow-50' : 'border-yellow-200 hover:border-yellow-300'
+                      }`}
+                      onClick={() => {
+                        setSelectedPackage(pkg);
+                        setCartItems([]); // clear cart when package selected
+                      }}
+                    >
+                      <h4 className="font-semibold text-black">{pkg.name}</h4>
+                      <p className="text-black text-sm mt-1">{pkg.description}</p>
+                      <div className="flex justify-between mt-2">
+                        <span className="text-lg font-bold text-yellow-900">R{pkg.base_price}</span>
+                        <span className="text-gray-500">{Math.floor(pkg.base_duration_minutes/60)}h {pkg.base_duration_minutes%60}m</span>
+                      </div>
                     </div>
-                    {pkg.is_full_day_service && (
-                      <span className="inline-block bg-yellow-900 text-yellow-100 text-xs px-2 py-1 rounded mt-2">
-                        Full Day Service
-                      </span>
-                    )}
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Individual Services */}
             <div>
               <h3 className="text-lg font-semibold text-white mb-3">Individual Services</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {services.map(service => (
-                  <div
-                    key={service.id}
-                    className={`bg-yellow-100 border-2 rounded-lg p-4 cursor-pointer transition-all ${
-                      selectedService?.id === service.id 
-                        ? 'border-yellow-600 bg-yellow-50' 
-                        : 'border-gray-200 hover:border-yellow-300'
-                    }`}
-                    onClick={() => {
-                      setSelectedService(service);
-                      setSelectedPackage(null);
-                    }}
-                  >
+                  <div key={service.id} className="bg-yellow-100 border-2 border-gray-200 rounded-lg p-4">
                     <h4 className="font-semibold text-black">{service.name}</h4>
                     <p className="text-black text-sm mt-1">{service.description}</p>
                     <div className="flex justify-between items-center mt-2">
                       <span className="text-lg font-bold text-yellow-900">R{service.base_price}</span>
                       <span className="text-gray-500">{service.duration_minutes}m</span>
                     </div>
-                    {service.allow_quantity && (
-                      <div className="mt-2">
-                        <label className="text-sm text-gray-600">Quantity:</label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="10"
-                          value={quantity}
-                          onChange={(e) => setQuantity(parseInt(e.target.value) || 1)}
-                          className="ml-2 w-16 px-2 py-1 border border-gray-300 rounded"
-                        />
-                      </div>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => addToCart(service)}
+                      className="mt-3 w-full bg-yellow-600 text-white py-2 rounded hover:bg-yellow-700 transition-colors"
+                    >
+                      Add to Cart
+                    </button>
                   </div>
                 ))}
               </div>
             </div>
 
+            {/* Cart Summary */}
+            {cartItems.length > 0 && (
+              <div className="bg-gray-50 rounded-lg p-4 mt-4">
+                <h3 className="font-semibold text-gray-800 mb-2">Your Cart</h3>
+                {cartItems.map(item => (
+                  <div key={item.service.id} className="flex justify-between items-center mb-2">
+                    <div>
+                      <span>{item.service.name}</span>
+                      <div className="flex items-center space-x-2 mt-1">
+                        <button
+                          type="button"
+                          onClick={() => updateQuantity(item.service.id, -1)}
+                          className="px-2 py-1 bg-gray-200 rounded"
+                        >-</button>
+                        <span>{item.quantity}</span>
+                        <button
+                          type="button"
+                          onClick={() => updateQuantity(item.service.id, 1)}
+                          className="px-2 py-1 bg-gray-200 rounded"
+                        >+</button>
+                        <button
+                          type="button"
+                          onClick={() => removeFromCart(item.service.id)}
+                          className="ml-2 text-red-600 text-sm"
+                        >Remove</button>
+                      </div>
+                    </div>
+                    <span>R{(item.service.base_price * item.quantity).toFixed(2)}</span>
+                  </div>
+                ))}
+                <div className="border-t pt-2 mt-2 font-semibold">
+                  Subtotal: R{subtotal.toFixed(2)}
+                </div>
+              </div>
+            )}
+
             <button
               type="button"
               onClick={() => setStep(2)}
-              disabled={!selectedService && !selectedPackage}
-              className="w-full bg-yellow-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-yellow-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              disabled={cartItems.length === 0 && !selectedPackage}
+              className="w-full bg-yellow-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-yellow-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
               Continue to Add-ons
             </button>
           </div>
         )}
 
-        {/* Step 2: Add-ons */}
+        {/* Step 2: Add-ons (global + service-specific) */}
         {step === 2 && (
           <div className="space-y-6">
             <h2 className="text-2xl font-semibold text-white mb-4">Select Add-ons</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {addons.map(addon => (
-                <div
-                  key={addon.id}
-                  className={`bg-yellow-100 border-2 rounded-lg p-4 cursor-pointer transition-all ${
-                    selectedAddons.some(a => a.id === addon.id) 
-                      ? 'border-yellow-600 bg-yellow-50' 
-                      : 'border-gray-200 hover:border-yellow-300'
-                  }`}
-                  onClick={() => handleAddonToggle(addon)}
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h4 className="font-semibold text-black">{addon.name}</h4>
-                      <p className="text-black text-sm mt-1">{addon.description}</p>
-                    </div>
-                    <span className="text-lg font-bold text-yellow-900">R{addon.price}</span>
-                  </div>
-                  <div className="flex justify-between items-center mt-2">
-                    <span className="text-gray-500">{addon.duration_minutes}m</span>
-                    {selectedAddons.some(a => a.id === addon.id) && (
-                      <div className="flex items-center space-x-2">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleAddonQuantityChange(addon.id, selectedAddons.find(a => a.id === addon.id).quantity - 1);
-                          }}
-                          className="w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center"
-                        >
-                          -
-                        </button>
-                        <span>{selectedAddons.find(a => a.id === addon.id).quantity}</span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleAddonQuantityChange(addon.id, selectedAddons.find(a => a.id === addon.id).quantity + 1);
-                          }}
-                          className="w-6 h-6 bg-gray-300 rounded-full flex items-center justify-center"
-                        >
-                          +
-                        </button>
+            {displayedAddons.length === 0 ? (
+              <p className="text-white">No add-ons available for your selection.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {displayedAddons.map(addon => {
+                  const selected = selectedAddons.find(a => a.addon.id === addon.id);
+                  return (
+                    <div
+                      key={addon.id}
+                      className={`bg-yellow-100 border-2 rounded-lg p-4 cursor-pointer transition-all ${
+                        selected ? 'border-yellow-600 bg-yellow-50' : 'border-gray-200 hover:border-yellow-300'
+                      }`}
+                      onClick={() => handleAddonToggle(addon)}
+                    >
+                      <div className="flex justify-between">
+                        <div>
+                          <h4 className="font-semibold text-black">{addon.name}</h4>
+                          <p className="text-black text-sm">{addon.description}</p>
+                        </div>
+                        <span className="font-bold text-yellow-900">R{addon.price}</span>
                       </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
+                      <div className="flex justify-between items-center mt-2">
+                        <span className="text-gray-500">{addon.duration_minutes}m</span>
+                        {selected && (
+                          <div className="flex items-center space-x-2">
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handleAddonQuantityChange(addon.id, -1); }}
+                              className="w-6 h-6 bg-gray-200 rounded-full"
+                            >-</button>
+                            <span>{selected.quantity}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); handleAddonQuantityChange(addon.id, 1); }}
+                              className="w-6 h-6 bg-gray-300 rounded-full"
+                            >+</button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             <div className="flex space-x-4">
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                className="flex-1 bg-gray-400 text-white py-3 px-4 rounded-lg font-semibold hover:bg-gray-700 transition-colors"
-              >
-                Back
-              </button>
-              <button
-                type="button"
-                onClick={() => setStep(3)}
-                className="flex-1 bg-yellow-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-yellow-700 transition-colors"
-              >
-                Continue to Date & Time
-              </button>
+              <button type="button" onClick={() => setStep(1)} className="flex-1 bg-gray-600 text-white py-3 rounded-lg">Back</button>
+              <button type="button" onClick={() => setStep(3)} className="flex-1 bg-yellow-600 text-white py-3 rounded-lg">Continue</button>
             </div>
           </div>
         )}
 
-        {/* Step 3: Date & Time with Enhanced Location */}
+        {/* Step 3: Date, Time, Location (unchanged, but we now pass coordinates) */}
         {step === 3 && (
           <div className="space-y-6">
             <h2 className="text-2xl font-semibold text-white mb-4">Select Date, Time & Location</h2>
-            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Date Selection */}
               <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Select Date
-                </label>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  min={new Date().toISOString().split('T')[0]}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                  required
-                />
+                <label className="block text-white mb-2">Date</label>
+                <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} min={new Date().toISOString().split('T')[0]} className="w-full px-3 py-2 border rounded-md" required />
               </div>
-
-              {/* Time Selection */}
               <div>
-                <label className="block text-sm font-medium text-white mb-2">
-                  Select Time
-                </label>
-                <select
-                  value={selectedTime}
-                  onChange={(e) => setSelectedTime(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                  required
-                >
-                  <option value="">Choose a time...</option>
-                  {timeSlots.map(time => (
-                    <option key={time} value={time}>{time}</option>
-                  ))}
+                <label className="block text-white mb-2">Time</label>
+                <select value={selectedTime} onChange={e => setSelectedTime(e.target.value)} className="w-full px-3 py-2 border rounded-md" required>
+                  <option value="">Select time</option>
+                  {timeSlots.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
-
-              {/* Location Selection */}
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-white mb-2">
-                  Service Location
-                </label>
-                <select
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500 mb-4"
-                >
-                  <option value="studio">At Studio (No Transport Fee)</option>
-                  <option value="mobile">Mobile Service (Transport Fee Applies)</option>
+                <label className="block text-white mb-2">Service Location</label>
+                <select value={location} onChange={e => setLocation(e.target.value)} className="w-full px-3 py-2 border rounded-md mb-4">
+                  <option value="studio">At Studio (No transport fee)</option>
+                  <option value="mobile">Mobile Service (transport fee applies)</option>
                 </select>
-                
                 {location === 'mobile' && (
                   <div className="space-y-4 bg-gray-50 p-4 rounded-lg">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Suburb *
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Enter your suburb"
-                          value={customerLocation.suburb}
-                          onChange={(e) => handleAddressChange('suburb', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                          required
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          City *
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Enter your city"
-                          value={customerLocation.city}
-                          onChange={(e) => handleAddressChange('city', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                          required
-                        />
-                      </div>
+                      <input type="text" placeholder="Suburb" value={customerLocation.suburb} onChange={e => handleAddressChange('suburb', e.target.value)} className="px-3 py-2 border rounded-md" required />
+                      <input type="text" placeholder="City" value={customerLocation.city} onChange={e => handleAddressChange('city', e.target.value)} className="px-3 py-2 border rounded-md" required />
                     </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Full Address
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Street address and number (optional)"
-                        value={customerLocation.address}
-                        onChange={(e) => handleAddressChange('address', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Postal Code
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Postal code (optional)"
-                        value={customerLocation.postalCode}
-                        onChange={(e) => handleAddressChange('postalCode', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                      />
-                    </div>
-                    
-                    {/* Distance Calculation Result */}
-                    {calculatingDistance && (
-                      <div className="bg-blue-50 border border-blue-200 rounded p-3">
-                        <p className="text-sm text-blue-800 flex items-center">
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
-                          Calculating distance from studio...
-                        </p>
-                      </div>
-                    )}
-
+                    <input type="text" placeholder="Street address (optional)" value={customerLocation.address} onChange={e => handleAddressChange('address', e.target.value)} className="w-full px-3 py-2 border rounded-md" />
+                    {calculatingDistance && <p className="text-blue-600">Calculating distance...</p>}
                     {customerLocation.distance > 0 && !calculatingDistance && (
-                      <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
-                        <p className="text-sm text-yellow-800 font-semibold">
-                          Distance Calculation:
-                        </p>
-                        <p className="text-sm text-yellow-700">
-                          Your location: {customerLocation.suburb}, {customerLocation.city}
-                        </p>
-                        <p className="text-sm text-yellow-700">
-                          Distance from studio: {customerLocation.distance} km
-                        </p>
-                        <p className="text-sm text-yellow-700 font-semibold mt-1">
-                          Transport Fee: R{calculateTransportFee().toFixed(2)}
-                        </p>
-                        <p className="text-xs text-yellow-600 mt-1">
-                          (Base: R50.00 + R5.00/km × {customerLocation.distance}km)
-                        </p>
+                      <div className="bg-yellow-50 p-3 rounded">
+                        <p>Distance: {customerLocation.distance} km</p>
+                        <p>Transport Fee: R{(1000 + customerLocation.distance * 11.5).toFixed(2)}</p>
+                        <p className="text-xs text-gray-600">(R1000 base + R11.50/km)</p>
                       </div>
                     )}
-
-                    {/* Studio Location Info */}
-                    <div className="bg-green-50 border border-green-200 rounded p-3">
-                      <p className="text-sm text-green-800 font-semibold">Studio Location:</p>
-                      <p className="text-sm text-green-700">{studioLocation.address}</p>
-                      <p className="text-xs text-green-600 mt-1">
-                        Free service at studio location
-                      </p>
+                    <div className="bg-green-50 p-3 rounded">
+                      <p className="font-semibold">Studio Location:</p>
+                      <p>{studioLocation.address}</p>
                     </div>
                   </div>
                 )}
               </div>
             </div>
-
             <div className="flex space-x-4">
-              <button
-                type="button"
-                onClick={() => setStep(2)}
-                className="flex-1 bg-gray-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-gray-700 transition-colors"
-              >
-                Back
-              </button>
-              <button
-                type="button"
-                onClick={() => setStep(4)}
-                disabled={!selectedDate || !selectedTime || (location === 'mobile' && (!customerLocation.suburb || !customerLocation.city))}
-                className="flex-1 bg-yellow-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-yellow-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-              >
-                Continue to Details
-              </button>
+              <button type="button" onClick={() => setStep(2)} className="flex-1 bg-gray-600 text-white py-3 rounded-lg">Back</button>
+              <button type="button" onClick={() => setStep(4)} disabled={!selectedDate || !selectedTime || (location==='mobile' && (!customerLocation.suburb||!customerLocation.city))} className="flex-1 bg-yellow-600 text-white py-3 rounded-lg disabled:bg-gray-400">Continue</button>
             </div>
           </div>
         )}
 
-        {/* Step 4: Customer Details & Summary */}
+        {/* Step 4: Details & Summary */}
         {step === 4 && (
           <div className="space-y-6">
-            <h2 className="text-2xl font-semibold text-white mb-4">Final Details</h2>
-            
+            <h2 className="text-2xl font-semibold text-white mb-4">Your Details</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Customer Information */}
               <div>
-                <h3 className="text-lg font-semibold text-white mb-3">Your Information</h3>
-                <div className="space-y-4">
-                  <input
-                    type="text"
-                    placeholder="Full Name *"
-                    value={customerInfo.name}
-                    onChange={(e) => setCustomerInfo({...customerInfo, name: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                    required
-                  />
-                  <input
-                    type="email"
-                    placeholder="Email Address *"
-                    value={customerInfo.email}
-                    onChange={(e) => setCustomerInfo({...customerInfo, email: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                    required
-                  />
-                  <input
-                    type="tel"
-                    placeholder="Phone Number *"
-                    value={customerInfo.phone}
-                    onChange={(e) => setCustomerInfo({...customerInfo, phone: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                    required
-                  />
-                  <textarea
-                    placeholder="Additional notes or special requirements..."
-                    value={customerInfo.notes}
-                    onChange={(e) => setCustomerInfo({...customerInfo, notes: e.target.value})}
-                    rows="3"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                  />
-                </div>
+                <input type="text" placeholder="Full Name" value={customerInfo.name} onChange={e => setCustomerInfo({...customerInfo, name: e.target.value})} className="w-full px-3 py-2 border rounded-md mb-3" required />
+                <input type="email" placeholder="Email" value={customerInfo.email} onChange={e => setCustomerInfo({...customerInfo, email: e.target.value})} className="w-full px-3 py-2 border rounded-md mb-3" required />
+                <input type="tel" placeholder="Phone" value={customerInfo.phone} onChange={e => setCustomerInfo({...customerInfo, phone: e.target.value})} className="w-full px-3 py-2 border rounded-md mb-3" required />
+                <textarea placeholder="Notes (optional)" value={customerInfo.notes} onChange={e => setCustomerInfo({...customerInfo, notes: e.target.value})} rows="3" className="w-full px-3 py-2 border rounded-md" />
               </div>
-
-              {/* Order Summary */}
               <div>
-                <h3 className="text-lg font-semibold text-white mb-3">Order Summary</h3>
+                <h3 className="font-semibold text-white mb-2">Order Summary</h3>
                 <div className="bg-gray-50 rounded-lg p-4">
-                  {/* Service */}
-                  {selectedService && (
-                    <div className="mb-3 pb-2 border-b">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <span className="font-medium">{selectedService.name}</span>
-                          {quantity > 1 && <span className="text-sm text-gray-600 ml-1">× {quantity}</span>}
-                        </div>
-                        <span className="font-medium">R{(parseFloat(selectedService.base_price) * quantity).toFixed(2)}</span>
-                      </div>
-                      <p className="text-sm text-gray-600 mt-1">{selectedService.description}</p>
-                    </div>
-                  )}
-                  
-                  {/* Package */}
-                  {selectedPackage && (
-                    <div className="mb-3 pb-2 border-b">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <span className="font-medium">{selectedPackage.name}</span>
-                        </div>
-                        <span className="font-medium">R{parseFloat(selectedPackage.base_price).toFixed(2)}</span>
-                      </div>
-                      <p className="text-sm text-gray-600 mt-1">{selectedPackage.description}</p>
-                    </div>
-                  )}
-
-                  {/* Add-ons */}
-                  {selectedAddons.map(addon => (
-                    <div key={addon.id} className="mb-2 text-sm">
-                      <div className="flex justify-between">
-                        <span>
-                          {addon.name} 
-                          {addon.quantity > 1 && <span className="text-gray-600 ml-1">× {addon.quantity}</span>}
-                        </span>
-                        <span>R{(parseFloat(addon.price) * addon.quantity).toFixed(2)}</span>
-                      </div>
+                  {cartItems.map(item => (
+                    <div key={item.service.id} className="flex justify-between mb-2">
+                      <span>{item.service.name} {item.quantity>1 && `×${item.quantity}`}</span>
+                      <span>R{(item.service.base_price * item.quantity).toFixed(2)}</span>
                     </div>
                   ))}
-
-                  {/* Transport Fee */}
-                  {transportFee > 0 && (
-                    <div className="mb-2 text-sm border-t pt-2">
-                      <div className="flex justify-between">
-                        <span>Transport Fee</span>
-                        <span>R{transportFee.toFixed(2)}</span>
-                      </div>
-                      <p className="text-xs text-gray-600">
-                        {customerLocation.distance}km from studio × R11.5/km + R1000 callout fee fee
-                      </p>
+                  {selectedPackage && (
+                    <div className="flex justify-between mb-2">
+                      <span>{selectedPackage.name}</span>
+                      <span>R{selectedPackage.base_price.toFixed(2)}</span>
                     </div>
                   )}
-
-                  {/* Totals */}
-                  <div className="border-t pt-3 mt-2">
-                    <div className="flex justify-between font-semibold text-lg">
-                      <span>Total Amount</span>
-                      <span>R{finalTotal.toFixed(2)}</span>
+                  {selectedAddons.map(a => (
+                    <div key={a.addon.id} className="flex justify-between mb-2 text-sm">
+                      <span>{a.addon.name} {a.quantity>1 && `×${a.quantity}`}</span>
+                      <span>R{(a.addon.price * a.quantity).toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between text-sm text-gray-600 mt-1">
-                      <span>Service Duration</span>
-                      <span>{Math.floor(totalDuration / 60)}h {totalDuration % 60}m</span>
+                  ))}
+                  {transportFee > 0 && (
+                    <div className="flex justify-between text-sm border-t pt-2 mt-2">
+                      <span>Transport Fee</span>
+                      <span>R{transportFee.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between text-sm text-yellow-600 font-semibold mt-2">
-                      <span>Deposit Required (50%)</span>
-                      <span>R{(finalTotal * 0.5).toFixed(2)}</span>
-                    </div>
+                  )}
+                  <div className="flex justify-between font-bold border-t pt-2 mt-2">
+                    <span>Total</span>
+                    <span>R{finalTotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm text-yellow-600 mt-2">
+                    <span>Deposit (50%)</span>
+                    <span>R{(finalTotal * 0.5).toFixed(2)}</span>
                   </div>
                 </div>
               </div>
             </div>
-
             <div className="flex space-x-4">
-              <button
-                type="button"
-                onClick={() => setStep(3)}
-                className="flex-1 bg-gray-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-gray-700 transition-colors"
-              >
-                Back
-              </button>
-              <button
-                type="submit"
-                className="flex-1 bg-yellow-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-yellow-700 transition-colors"
-              >
-                Book Appointment & Pay Deposit
-              </button>
+              <button type="button" onClick={() => setStep(3)} className="flex-1 bg-gray-600 text-white py-3 rounded-lg">Back</button>
+              <button type="submit" className="flex-1 bg-yellow-600 text-white py-3 rounded-lg">Proceed to Payment</button>
             </div>
           </div>
         )}
@@ -807,82 +579,19 @@ const Booking = () => {
   );
 };
 
+// Sample data (fallback)
 const getSampleServices = () => [
-   {
-      name: 'Makeup',
-      description: 'Full glam makeup for special occasions, events, and photoshoots OR Natural everyday makeup look perfect for work or casual outings',
-      price: 800,
-      duration: '90 mins'
-    },
-    {
-      name: 'Bridal Makeup Full Day',
-      description: 'Specialized bridal makeup package with makeup artist on standby until 4pm',
-      price: 3500,
-      duration: '120 mins'
-    },
-
-    {
-      name: 'Bridal Makeup Half Day',
-      description: 'Specialized bridal makeup package with makeup artist on standby until 12pm',
-      price: 2500,
-      duration: '120 mins'
-    },
-    {
-      name: 'Hair Installation',
-      description: 'Professional hair weave installation with customization',
-      price: 350,
-      duration: '90 mins'
-    },
-    {
-      name : "Hair curling",
-      description: 'Professional hair curling and styling for any occasion',
-      price: 600,
-      duration: '60 mins'
-    },
-    {
-      name: 'Bridal styling',
-      description: 'Elegant bridal hairstyle with full-service package',
-      price: 1200,
-      duration: '120 mins'
-    }
+  { id: 1, name: 'Makeup', description: 'Full glam or natural makeup', base_price: 800, duration_minutes: 90, allow_quantity: true, category: 'makeup' },
+  { id: 2, name: 'Bridal Makeup Full Day', description: 'Wedding day with artist on standby', base_price: 3500, duration_minutes: 120, allow_quantity: false, category: 'bridal' },
+  { id: 3, name: 'Hair Installation', description: 'Weave installation', base_price: 350, duration_minutes: 90, allow_quantity: true, category: 'hair' }
 ];
-
 const getSampleAddons = () => [
-  {
-    id: 1,
-    name: 'False Lashes',
-    description: 'Application of premium false eyelashes',
-    price: 50,
-    duration_minutes: 15
-  },
-  {
-    id: 2,
-    name: 'Facial Treatment',
-    description: 'Quick pre-makeup facial and skin prep',
-    price: 150,
-    duration_minutes: 30
-  }
+  { id: 1, name: 'False Lashes', description: 'Premium lashes', price: 50, duration_minutes: 15, service_id: null },
+  { id: 2, name: 'Bridesmaid Makeup', description: 'Makeup for one bridesmaid', price: 300, duration_minutes: 45, service_id: 2 } // linked to bridal service
 ];
-
 const getSamplePackages = () => [
-  {
-    id: 1,
-    name: 'Bridal Party Package',
-    description: 'Makeup for bride and up to 4 bridesmaids',
-    base_price: 1800,
-    base_duration_minutes: 180,
-    is_full_day_service: false,
-    transport_fee: 0
-  },
-  {
-    id: 2,
-    name: 'Full Wedding Package',
-    description: 'Complete bridal package for the big day',
-    base_price: 2500,
-    base_duration_minutes: 240,
-    is_full_day_service: true,
-    transport_fee: 200
-  }
+  { id: 1, name: 'Bridal Party Package', description: 'Bride + up to 4 bridesmaids', base_price: 1800, base_duration_minutes: 180 },
+  { id: 2, name: 'Full Wedding Package', description: 'Complete wedding day', base_price: 2500, base_duration_minutes: 240 }
 ];
 
 export default Booking;
