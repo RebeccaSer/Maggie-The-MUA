@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://maggie-the-mua.onrender.com//api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://maggie-the-mua.onrender.com/api';
 
 const confirmPayment = async (appointmentId, paymentMethod, amount, paymentId = null) => {
     const response = await fetch(`${API_BASE_URL}/payments/confirm`, {
@@ -16,40 +16,24 @@ const confirmPayment = async (appointmentId, paymentMethod, amount, paymentId = 
     return await response.json();
 };
 
-export const initiatePayFastPayment = (paymentData) => {
-    const { appointmentId, depositAmount, customerInfo, serviceName } = paymentData;
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = 'https://www.payfast.co.za/eng/process';
-    form.target = '_blank';
+// Secure PayFast initiation – calls backend, backend returns auto-submit form
+export const initiatePayFastPayment = async (paymentData) => {
+    const response = await fetch(`${API_BASE_URL}/payments/initiate-payfast`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(paymentData),
+    });
 
-    const fields = {
-        merchant_id: process.env.PAYFAST_MERCHANT_ID,
-        merchant_key: process.env.PAYFAST_MERCHANT_KEY,
-        return_url: `${window.location.origin}/payment-success`,
-        cancel_url: `${window.location.origin}/payment-cancelled`,
-        notify_url: `${API_BASE_URL}/payments/payfast-itn`,
-        name_first: customerInfo.name?.split(' ')[0] || '',
-        name_last: customerInfo.name?.split(' ').slice(1).join(' ') || '',
-        email_address: customerInfo.email,
-        m_payment_id: appointmentId,
-        amount: depositAmount.toFixed(2),
-        item_name: `Deposit for Appointment ${appointmentId}`,
-        item_description: `Booking deposit for ${serviceName || 'Appointment'}`,
-    };
-
-    for (const [key, value] of Object.entries(fields)) {
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = key;
-        input.value = value;
-        form.appendChild(input);
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to initiate PayFast payment');
     }
 
-    document.body.appendChild(form);
-    form.submit();
-    document.body.removeChild(form);
-    return new Promise(() => {});
+    const html = await response.text();
+    // Open a new window/tab and submit the form automatically
+    const win = window.open();
+    win.document.write(html);
+    win.document.close();
 };
 
 export const initiatePayment = async (paymentData, method = 'payfast') => {
