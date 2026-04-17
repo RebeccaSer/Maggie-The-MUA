@@ -6,34 +6,22 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
 });
 
-// Request interceptor to add auth token
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+api.interceptors.request.use(config => {
+  const token = localStorage.getItem('authToken');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+}, error => Promise.reject(error));
 
-// Response interceptor to handle auth errors
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localAuthAPI.logout();
-      window.location.href = '/admin/login';
-    }
-    return Promise.reject(error);
+api.interceptors.response.use(response => response, error => {
+  if (error.response?.status === 401) {
+    localAuthAPI.logout();
+    window.location.href = '/admin/login';
   }
-);
+  return Promise.reject(error);
+});
 
 export const servicesAPI = {
   getServices: () => api.get('/services'),
@@ -42,7 +30,6 @@ export const servicesAPI = {
   createService: (data) => api.post('/admin/services', data),
   updateService: (id, data) => api.put(`/admin/services/${id}`, data),
   deleteService: (id) => api.delete(`/admin/services/${id}`),
-  // Add-on CRUD
   createAddon: (data) => api.post('/admin/addons', data),
   updateAddon: (id, data) => api.put(`/admin/addons/${id}`, data),
   deleteAddon: (id) => api.delete(`/admin/addons/${id}`),
@@ -55,6 +42,8 @@ export const appointmentsAPI = {
   reschedule: (id, data) => api.post(`/appointments/${id}/reschedule`, data),
   cancel: (id) => api.post(`/appointments/${id}/cancel`),
   updateStatus: (id, status) => api.put(`/admin/appointments/${id}`, { status }),
+  updateAppointment: (id, data) => api.put(`/appointments/admin/${id}`, data),
+cancelAppointment: (id, data) => api.delete(`/appointments/admin/${id}`, { data }),
 };
 
 export const backendAuthAPI = {

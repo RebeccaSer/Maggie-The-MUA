@@ -10,6 +10,8 @@ import Payment from './pages/Payment';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 import ProtectedRoute from './components/ProtectedRoute';
+import PaymentSuccess from './pages/PaymentSuccess';
+import PaymentCancelled from './pages/PaymentCancelled';
 import './App.css';
 
 function App() {
@@ -19,6 +21,8 @@ function App() {
         <div className="min-h-screen bg-gradient-to-br from-pink-50 to-purple-50 flex flex-col">
           {/* Show header/footer only for public routes */}
           <Routes>
+            <Route path="/payment-success" element={<PaymentSuccess />} />
+            <Route path="/payment-cancelled" element={<PaymentCancelled />} />    
             <Route path="/admin/*" element={null} />
             <Route path="*" element={<Header />} />
           </Routes>

@@ -170,15 +170,6 @@ const AdminLogin = () => {
             </button>
           </div>
 
-          {/* Demo Credentials */}
-          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-md p-4">
-            <h4 className="text-sm font-medium text-blue-800 mb-2">Demo Credentials:</h4>
-            <p className="text-xs text-blue-700">
-              <strong>Email:</strong> admin@maggiethemua.com<br />
-              <strong>Password:</strong> admin123
-            </p>
-          </div>
-
           {/* Back to main site */}
           <div className="text-center">
             <Link

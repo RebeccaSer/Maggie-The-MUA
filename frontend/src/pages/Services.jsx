@@ -13,7 +13,7 @@ const Services = () => {
         setServices(res.data.data || []);
       } catch (error) {
         console.error('Error loading services:', error);
-        setServices(getSampleServices());
+        setServices([]);
       } finally {
         setLoading(false);
       }

@@ -22,6 +22,7 @@ app.use('/api/services', require('./routes/services'));
 app.use('/api/appointments', require('./routes/appointments'));
 app.use('/api/payments', require('./routes/payments'));
 app.use('/api/admin', require('./routes/admin'));
+app.use('/api/availability', require('./routes/availability'));
 
 // Health check route
 app.get('/api/health', (req, res) => {
@@ -51,4 +52,5 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🌐 Health check: http://localhost:${PORT}/api/health`);
+  console.log(`📅 Availability check: http://localhost:${PORT}/api/availability/check/:date`);
 });

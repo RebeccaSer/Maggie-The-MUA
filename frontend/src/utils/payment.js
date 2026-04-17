@@ -1,105 +1,62 @@
-import stripePromise from './stripe';
-
-// Backend API base URL
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-export const initiateStripePayment = async (paymentData) => {
-  try {
-    // 1. Create payment intent on your backend
-    const response = await fetch(`${API_BASE_URL}/payments/create-intent`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        amount: Math.round(paymentData.depositAmount * 100), // Convert to cents
-        currency: 'zar',
-        metadata: {
-          appointmentId: paymentData.appointmentId,
-          customerName: paymentData.customerInfo.name,
-          customerEmail: paymentData.customerInfo.email,
-          serviceType: paymentData.serviceName,
-          appointmentDate: paymentData.appointmentDate
-        }
-      }),
+const confirmPayment = async (appointmentId, paymentMethod, amount, paymentId = null) => {
+    const response = await fetch(`${API_BASE_URL}/payments/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            appointmentId,
+            paymentMethod,
+            amount,
+            status: 'confirmed',
+            paymentId
+        }),
     });
-
-    if (!response.ok) {
-      throw new Error('Failed to create payment intent');
-    }
-
-    const { clientSecret } = await response.json();
-
-    // 2. Redirect to Stripe Checkout
-    const stripe = await stripePromise;
-    
-    const result = await stripe.redirectToCheckout({
-      clientSecret: clientSecret,
-      // return_url: `${window.location.origin}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-    });
-
-    if (result.error) {
-      throw new Error(result.error.message);
-    }
-
-    return { success: true, type: 'stripe' };
-
-  } catch (error) {
-    console.error('Stripe payment error:', error);
-    throw error;
-  }
+    if (!response.ok) throw new Error('Failed to confirm payment');
+    return await response.json();
 };
 
-export const initiateBankTransfer = (paymentData) => {
-  // Show business banking details for manual transfer
-  const bankDetails = {
-    bankName: 'Your Bank Name',
-    accountName: 'HER BY MAGGIE',
-    accountNumber: '12345678901',
-    branchCode: '123456',
-    reference: `MAGGIE-${paymentData.appointmentId}`
-  };
+export const initiatePayFastPayment = (paymentData) => {
+    const { appointmentId, depositAmount, customerInfo, serviceName } = paymentData;
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'https://www.payfast.co.za/eng/process';
+    form.target = '_blank';
 
-  // For now, show an alert with banking details
-  // In a real app, you'd show a nice modal or dedicated page
-  const message = `
-Bank Transfer Details:
-Bank: ${bankDetails.bankName}
-Account Holder: ${bankDetails.accountName}
-Account Number: ${bankDetails.accountNumber}
-Branch Code: ${bankDetails.branchCode}
-Reference: ${bankDetails.reference}
+    const fields = {
+        merchant_id: process.env.REACT_APP_PAYFAST_MERCHANT_ID,
+        merchant_key: process.env.REACT_APP_PAYFAST_MERCHANT_KEY,
+        return_url: `${window.location.origin}/payment-success`,
+        cancel_url: `${window.location.origin}/payment-cancelled`,
+        notify_url: `${API_BASE_URL}/payments/payfast-itn`,
+        name_first: customerInfo.name?.split(' ')[0] || '',
+        name_last: customerInfo.name?.split(' ').slice(1).join(' ') || '',
+        email_address: customerInfo.email,
+        m_payment_id: appointmentId,
+        amount: depositAmount.toFixed(2),
+        item_name: `Deposit for Appointment ${appointmentId}`,
+        item_description: `Booking deposit for ${serviceName || 'Appointment'}`,
+    };
 
-Amount to Pay: R${paymentData.depositAmount.toFixed(2)}
+    for (const [key, value] of Object.entries(fields)) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = key;
+        input.value = value;
+        form.appendChild(input);
+    }
 
-Please use the reference number when making the transfer.
-Your booking will be confirmed once payment is received.
-  `;
-
-  alert(message);
-  
-  return { success: true, type: 'bank_transfer', bankDetails };
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+    return new Promise(() => {});
 };
 
-// Legacy function for other payment methods
-export const initiatePayment = async (paymentData, method = 'stripe') => {
-  switch (method) {
-    case 'stripe':
-      return await initiateStripePayment(paymentData);
-    case 'bank_transfer':
-      return initiateBankTransfer(paymentData);
-    case 'mock':
-      // Simulate successful payment for development
-      return new Promise((resolve) => {
-        setTimeout(() => {
-          resolve({
-            success: true,
-            paymentUrl: `${window.location.origin}/payment-success?mock=true&amount=${paymentData.depositAmount}`,
-            type: 'mock'
-          });
-        }, 2000);
-      });
-    default:
-      throw new Error('Unsupported payment method');
-  }
+export const initiatePayment = async (paymentData, method = 'payfast') => {
+    if (method === 'payfast') return initiatePayFastPayment(paymentData);
+    if (method === 'mock') {
+        await confirmPayment(paymentData.appointmentId, 'mock', paymentData.depositAmount);
+        return { success: true, type: 'mock' };
+    }
+    throw new Error('Unsupported payment method');
 };
