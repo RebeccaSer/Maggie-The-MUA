@@ -414,7 +414,7 @@ const AppointmentsTab = ({ appointments, onRefresh }) => {
 
 // Availability Tab (full-day + time-slot blocks)
 const AvailabilityTab = () => {
-    const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+    const API_BASE = process.env.REACT_APP_API_URL || 'https://maggie-the-mua.onrender.com//api';
     const [blockedDates, setBlockedDates] = useState([]);
     const [blockedSlots, setBlockedSlots] = useState([]);
     const [selectedDate, setSelectedDate] = useState('');

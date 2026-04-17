@@ -110,7 +110,7 @@ const Booking = () => {
 
   const checkFullDayAvailability = async (date) => {
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/availability/check/${date}`);
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://maggie-the-mua.onrender.com//api'}/availability/check/${date}`);
       const data = await response.json();
       return data.isAvailable;
     } catch (error) {
@@ -121,7 +121,7 @@ const Booking = () => {
 
   const checkTimeSlotAvailability = async (date, time) => {
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/availability/check/${date}/${time}`);
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://maggie-the-mua.onrender.com//api'}/availability/check/${date}/${time}`);
       const data = await response.json();
       return data.isAvailable;
     } catch (error) {
