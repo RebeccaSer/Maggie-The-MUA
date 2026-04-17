@@ -24,8 +24,8 @@ export const initiatePayFastPayment = (paymentData) => {
     form.target = '_blank';
 
     const fields = {
-        merchant_id: process.env.REACT_APP_PAYFAST_MERCHANT_ID,
-        merchant_key: process.env.REACT_APP_PAYFAST_MERCHANT_KEY,
+        merchant_id: process.env.PAYFAST_MERCHANT_ID,
+        merchant_key: process.env.PAYFAST_MERCHANT_KEY,
         return_url: `${window.location.origin}/payment-success`,
         cancel_url: `${window.location.origin}/payment-cancelled`,
         notify_url: `${API_BASE_URL}/payments/payfast-itn`,
