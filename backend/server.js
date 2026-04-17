@@ -9,7 +9,7 @@ const app = express();
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'https://maggie-the-mua.vercel.app/',
+  origin: process.env.FRONTEND_URL || 'https://maggie-the-cakkghv63-rebeccasers-projects.vercel.app',
   credentials: true
 }));
 app.use(morgan('combined'));
