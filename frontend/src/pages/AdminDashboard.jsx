@@ -18,6 +18,7 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [user, setUser] = useState(null);
+  const [packages, setPackages] = useState([]);
 
   useEffect(() => {
     const currentUser = authAPI.getCurrentUser();
@@ -28,11 +29,13 @@ const AdminDashboard = () => {
   const loadInitialData = async () => {
     setLoading(true);
     try {
-      const [servicesRes, appointmentsRes, addonsRes] = await Promise.all([
+      const [servicesRes, appointmentsRes, addonsRes, packagesRes] = await Promise.all([
         servicesAPI.getServices(),
         appointmentsAPI.getAppointments(),
-        servicesAPI.getAddons()
+        servicesAPI.getAddons(),
+        servicesAPI.getPackages()   // You'll need to add this method to your API
       ]);
+      setPackages(packagesRes.data.data || []);
       setServices(servicesRes.data.data || []);
       setAppointments(appointmentsRes.data.data || []);
       setAddons(addonsRes.data.data || []);
@@ -128,7 +131,7 @@ const AdminDashboard = () => {
       <div className="border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <nav className="flex space-x-8">
-            {['overview','services','addons','appointments','availability','promotions','settings'].map(tab => (
+            {['overview','services','addons','packages','appointments','availability','promotions','settings'].map(tab => (
               <button key={tab} onClick={() => setActiveTab(tab)} className={`py-4 px-1 border-b-2 text-sm font-medium ${activeTab === tab ? 'border-yellow-500 text-yellow-600' : 'border-transparent text-white'}`}>
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
@@ -144,6 +147,7 @@ const AdminDashboard = () => {
         {activeTab === 'overview' && <OverviewTab appointments={appointments} services={services} />}
         {activeTab === 'services' && <ServicesTab services={services} editingService={editingService} setEditingService={setEditingService} newService={newService} setNewService={setNewService} handleSaveService={handleSaveService} handleDeleteService={handleDeleteService} toggleServiceStatus={toggleServiceStatus} loading={loading} />}
         {activeTab === 'addons' && <AddonsTab addons={addons} services={services} editingAddon={editingAddon} setEditingAddon={setEditingAddon} newAddon={newAddon} setNewAddon={setNewAddon} handleSaveAddon={handleSaveAddon} handleDeleteAddon={handleDeleteAddon} loading={loading} />}
+        {activeTab === 'packages' && <PackagesTab packages={packages} onRefresh={loadInitialData} />}
         {activeTab === 'appointments' && <AppointmentsTab appointments={appointments} onRefresh={loadInitialData} />}
         {activeTab === 'availability' && <AvailabilityTab />}
         {activeTab === 'promotions' && <PromotionsTab />}
@@ -249,6 +253,52 @@ const AddonsTab = ({ addons, services, editingAddon, setEditingAddon, newAddon, 
   </div></div>
 );
 
+
+// Packages Tab
+const PackagesTab = ({ packages, onRefresh }) => {
+  const [editingPackage, setEditingPackage] = useState(null);
+  const [newPackage, setNewPackage] = useState({
+    name: '', description: '', base_price: '', base_duration_minutes: '', is_full_day_service: false, is_active: true
+  });
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    // Implement save logic (create/update)
+    // You'll need servicesAPI.createPackage / updatePackage
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('Delete this package?')) return;
+    // Implement delete
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between">
+        <h2 className="text-2xl font-bold text-white">Packages</h2>
+        <button onClick={() => setEditingPackage('new')} className="bg-yellow-600 text-white px-4 py-2 rounded">+ Add Package</button>
+      </div>
+      <div className="grid grid-cols-3 gap-6">
+        {packages.map(pkg => (
+          <div key={pkg.id} className="bg-white p-4 rounded shadow">
+            <h3 className="font-semibold">{pkg.name}</h3>
+            <p className="text-sm text-gray-600">{pkg.description}</p>
+            <div className="flex justify-between mt-2">
+              <span className="text-yellow-600 font-bold">R{parseFloat(pkg.base_price).toFixed(2)}</span>
+              <span>{pkg.base_duration_minutes} min</span>
+            </div>
+            <div className="flex space-x-2 mt-4">
+              <button onClick={() => setEditingPackage(pkg)} className="flex-1 bg-gray-600 text-white py-1 rounded text-sm">Edit</button>
+              <button onClick={() => handleDelete(pkg.id)} className="flex-1 bg-red-600 text-white py-1 rounded text-sm">Delete</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Appointments Tab
 const AppointmentsTab = ({ appointments, onRefresh }) => {
     const [editingAppointment, setEditingAppointment] = useState(null);
     const [newDateTime, setNewDateTime] = useState('');
