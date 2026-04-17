@@ -60,7 +60,7 @@ async function setupDatabase() {
     console.log('📋 Next steps:');
     console.log('   1. Start your backend server: npm run dev');
     console.log('   2. Start your frontend server: cd frontend && npm start');
-    console.log('   3. Access the application at http://localhost:3000');
+    console.log('   3. Access the application at https://maggie-the-mua.vercel.app/');
     console.log('   4. Admin login: admin@maggiethe-mua.com / admin123');
     
     await targetClient.release();
